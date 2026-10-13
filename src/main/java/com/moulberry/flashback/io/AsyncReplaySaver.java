@@ -4,6 +4,7 @@ import com.mojang.authlib.GameProfile;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.moulberry.flashback.CachedChunkPacket;
 import com.moulberry.flashback.Flashback;
+import com.moulberry.flashback.RegistryIdSnapshot;
 import com.moulberry.flashback.SneakyThrow;
 import com.moulberry.flashback.TempFolderProvider;
 import com.moulberry.flashback.action.ActionConfigurationPacket;
@@ -230,6 +231,14 @@ public class AsyncReplaySaver {
                 writer.finishAction(ActionConfigurationPacket.INSTANCE);
             }
         });
+    }
+
+    public void writeRegistryIds(String json) {
+        try {
+            Files.writeString(this.recordFolder.resolve(RegistryIdSnapshot.FILE_NAME), json);
+        } catch (IOException e) {
+            Flashback.LOGGER.warn("Couldn't save registry ids", e);
+        }
     }
 
     public void writeIcon(NativeImage nativeImage) {

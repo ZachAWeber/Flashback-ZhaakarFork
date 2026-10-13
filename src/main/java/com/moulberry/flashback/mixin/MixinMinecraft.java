@@ -5,6 +5,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.moulberry.flashback.Flashback;
+import com.moulberry.flashback.RegistryIdSnapshot;
 import com.moulberry.flashback.FreezeSlowdownFormula;
 import com.moulberry.flashback.combo_options.GlowingOverride;
 import com.moulberry.flashback.configuration.FlashbackConfigV1;
@@ -434,6 +435,12 @@ public abstract class MixinMinecraft implements MinecraftExt {
     public void flashback$startReplayServer(LevelStorageSource.LevelStorageAccess levelStorageAccess, PackRepository packRepository, WorldStem stem,
                                             UUID playbackUUID, Path path) {
         this.disconnect();
+
+        // Disconnecting makes Fabric unmap back to local ids. Now restore the raw ids that were in use when this
+        // replay was recorded, so blocks/items from mods registered in a different order on the server decode
+        // correctly. Fabric unmaps these again when the replay is closed (on disconnect).
+        RegistryIdSnapshot.applyForReplay(path);
+
         this.progressListener.set(null);
         Instant instant = Instant.now();
         try {

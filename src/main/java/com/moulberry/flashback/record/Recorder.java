@@ -7,6 +7,7 @@ import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.datafixers.util.Pair;
 import com.moulberry.flashback.Flashback;
 import com.moulberry.flashback.PacketHelper;
+import com.moulberry.flashback.RegistryIdSnapshot;
 import com.moulberry.flashback.RegistryMetaHelper;
 import com.moulberry.flashback.action.*;
 import com.moulberry.flashback.compat.DistantHorizonsSupport;
@@ -164,6 +165,13 @@ public class Recorder {
         }
 
         this.metadata.namespacesForRegistries = RegistryMetaHelper.calculateNamespacesForRegistries();
+
+        // Save the raw registry ids in use right now (synced to the server's ids when on a multiplayer server)
+        // so playback can restore them, see RegistryIdSnapshot.
+        String registryIds = RegistryIdSnapshot.capture();
+        if (registryIds != null) {
+            this.asyncReplaySaver.writeRegistryIds(registryIds);
+        }
 
         String worldName = null;
         ServerData serverData = Minecraft.getInstance().getCurrentServer();

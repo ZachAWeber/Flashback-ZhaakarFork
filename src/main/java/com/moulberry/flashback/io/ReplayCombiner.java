@@ -3,6 +3,7 @@ package com.moulberry.flashback.io;
 import com.google.gson.JsonObject;
 import com.moulberry.flashback.Flashback;
 import com.moulberry.flashback.FlashbackGson;
+import com.moulberry.flashback.RegistryIdSnapshot;
 import com.moulberry.flashback.action.Action;
 import com.moulberry.flashback.action.ActionLevelChunkCached;
 import com.moulberry.flashback.action.ActionRegistry;
@@ -170,6 +171,9 @@ public class ReplayCombiner {
             zipOut.putNextEntry(zipEntry);
             Files.copy(firstFileSystem.getPath("/icon.png"), zipOut);
             zipOut.closeEntry();
+
+            // Write recorded registry ids (taken from the first replay)
+            RegistryIdSnapshot.copyFromFileSystem(firstFileSystem, zipOut);
 
             // Write chunks
             for (Map.Entry<String, ReplayChunk> entry : newReplayChunks.entrySet()) {

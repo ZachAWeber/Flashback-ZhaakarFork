@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.moulberry.flashback.Flashback;
+import com.moulberry.flashback.RegistryIdSnapshot;
 import org.apache.commons.io.FileUtils;
 import org.jetbrains.annotations.Nullable;
 
@@ -101,6 +102,15 @@ public class ReplayExporter {
                 zipEntry = new ZipEntry("icon.png");
                 zipOut.putNextEntry(zipEntry);
                 Files.copy(iconPath, zipOut);
+                zipOut.closeEntry();
+            }
+
+            // Write recorded registry ids
+            Path registryIdsPath = recordFolder.resolve(RegistryIdSnapshot.FILE_NAME);
+            if (Files.exists(registryIdsPath)) {
+                zipEntry = new ZipEntry(RegistryIdSnapshot.FILE_NAME);
+                zipOut.putNextEntry(zipEntry);
+                Files.copy(registryIdsPath, zipOut);
                 zipOut.closeEntry();
             }
 
