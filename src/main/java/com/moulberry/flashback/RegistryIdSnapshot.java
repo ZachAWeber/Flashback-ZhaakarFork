@@ -9,6 +9,8 @@ import it.unimi.dsi.fastutil.objects.Object2IntLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import net.fabricmc.fabric.impl.registry.sync.RegistrySyncManager;
 import net.fabricmc.fabric.impl.registry.sync.RemappableRegistry;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -18,7 +20,10 @@ import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -156,8 +161,9 @@ public final class RegistryIdSnapshot {
         }
 
         try {
+            int filled = fillHoles(map);
             RegistrySyncManager.apply(map, RemappableRegistry.RemapMode.REMOTE);
-            Flashback.LOGGER.info("Applied recorded registry ids for replay {} ({} registries)", replayZip.getFileName(), map.size());
+            Flashback.LOGGER.info("Applied recorded registry ids for replay {} ({} registries, {} holes filled)", replayZip.getFileName(), map.size(), filled);
             return true;
         } catch (Throwable t) {
             // Most likely the replay contains entries from a mod that isn't installed. Undo any partial
@@ -170,6 +176,69 @@ public final class RegistryIdSnapshot {
             }
             return false;
         }
+    }
+
+    /**
+     * Makes every saved ID table dense (no unused raw ids) by assigning local entries that the table doesn't mention
+     * into the gaps, then appending any that are left over after the highest id.
+     *
+     * <p>Gaps happen when the server hides some entries from registry sync, e.g. Polymer's server-side-only
+     * blocks/items. Fabric's REMOTE remap leaves those raw ids empty, which is fine on a normal client but breaks
+     * playback: Flashback runs an internal server on the same registries, and code that iterates a registry
+     * (Polymer's sync) hits a null, and Fabric's own unmap throws "Unused id". Recorded packets never reference
+     * the gap ids (the server never sent them), so filling them doesn't change how the replay decodes.</p>
+     *
+     * @return the number of gaps filled across all registries
+     */
+    private static int fillHoles(Map<ResourceLocation, Object2IntMap<ResourceLocation>> map) {
+        int filled = 0;
+
+        for (Map.Entry<ResourceLocation, Object2IntMap<ResourceLocation>> entry : map.entrySet()) {
+            Registry<?> registry = BuiltInRegistries.REGISTRY.get(entry.getKey());
+            if (registry == null) {
+                continue;
+            }
+
+            Object2IntMap<ResourceLocation> ids = entry.getValue();
+
+            int max = -1;
+            BitSet used = new BitSet();
+            for (int rawId : ids.values()) {
+                used.set(rawId);
+                max = Math.max(max, rawId);
+            }
+
+            // Local entries missing from the saved table, in local raw id order for determinism
+            List<ResourceLocation> localOnly = new ArrayList<>();
+            for (Object value : registry) {
+                @SuppressWarnings({"unchecked", "rawtypes"})
+                ResourceLocation id = ((Registry) registry).getKey(value);
+                if (id != null && !ids.containsKey(id)) {
+                    localOnly.add(id);
+                }
+            }
+
+            int nextFree = used.nextClearBit(0);
+            for (ResourceLocation id : localOnly) {
+                if (nextFree < max) {
+                    ids.put(id, nextFree);
+                    used.set(nextFree);
+                    filled++;
+                    nextFree = used.nextClearBit(nextFree + 1);
+                } else {
+                    ids.put(id, ++max);
+                }
+            }
+
+            if (nextFree < max) {
+                // More gaps than local-only entries: a remap would still leave holes. Rather than risk the crash,
+                // fail so the caller falls back to local ids (the stock Flashback behaviour).
+                throw new IllegalStateException("Registry " + entry.getKey() + " still has unused raw id " + nextFree
+                    + " after filling, cannot apply recorded ids safely");
+            }
+        }
+
+        return filled;
     }
 
     /**
